@@ -1,15 +1,14 @@
+#!/usr/local/bin/python3.2
 # -*- coding: utf-8 -*-
 import cherrypy
-import numpy as np
-import matplotlib.pyplot as plt
-import os.path
-
 import json
-import urllib2
+import numpy as np
+import urllib.request
+import os.path
 from pandas import DataFrame
+import random
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-print(current_dir)
 
 class Root():
     
@@ -20,7 +19,7 @@ class Root():
                   <html>
                   <head>
                         <title>%s</title>
-                        <link rel="stylesheet" href="css/joey_css.css" type="text/css" /> 
+                        <link rel="stylesheet" href="static/joey_css.css" type="text/css" />
                   </head>
                   <body>
                   <div class="title"><h2>%s</h2></div>''' % (self.title, self.title)
@@ -33,31 +32,40 @@ class Root():
     def index(self, poem=None, sale=None):
         
         cherrypy.session['poem'] = poem
-        #cherrypy.session['sale'] = sale
+        
+
         
         if poem == None:
             return self.header() + '''
                     
-                    <form action="index" method="GET">
-                        <div class="instruct"><p>Please enter some text. 
-                        Do not copy and paste! Punctuation helps!</p></div>
-                        <textarea name="poem" rows=5 cols=80 class="form"></textarea><br/>
+                    <form action="spotipy" method="GET">
+                        <div class="instruct"><p>Enter some text. Put text all on one line! Punctuation helps!</p></div>
+                        <textarea name="poem" rows=5 cols=80 class="form" placeholder="Tiger! Tiger! Burning bright. In the forest of the night..."></textarea><br/>
                         <div class="btn"><input type="submit" value="Submit Poem"/></div>
                     </form>
                     
                     <br/>
+                    
+                    <script>
+                    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+                    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+                    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+                    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+                    
+                    ga('create', 'UA-44077322-1', 'webfactional.com');
+                    ga('send', 'pageview');
+                    
+                    </script>
+                    
                     ''' + self.footer()
         else:
             
             poem = poem
-            #sale = float(sale)
             
             a_query = Query(poem)
             a_query.search_loop()
             playlist, playlist_urls = a_query.dic_to_frame()
             
-            #[gross_profit, gross_margin] = (an_operation.double(poem, sale))
-            #M = (an_operation.make_matrix(poem, sale))
             my_data = playlist
             
             url = playlist_urls
@@ -65,26 +73,33 @@ class Root():
             artist = playlist['artist']
             album = playlist['album']
             
+            my_length = len(track)
             
-            table = self.matrix_to_html(my_data, url)
-            #table = self.matrix_to_html(playlist_urls)
-            
-            
-            #fig = plt.figure()
-            #plt.plot(sp.arange(10))
-            #fig.savefig('/Users/joedangerstox/Desktop/Python/img/test.png')
+            table = self.matrix_to_html(my_data, url,my_length)
+
             
             return self.header() + '''
-                    <div><form action="index" method="GET">
-                        <div class="instruct"><p>Please enter some text. 
-                        Do not copy and paste! Punctuation helps!</p></div>
+                    <div><form action="spotipy" method="GET">
+                        <div class="instruct"><p>Enter some text. Put text all on one line! Punctuation helps!</p></div>
                         <textarea name="poem" rows=5 cols=80></textarea><br/>
                         <input type="submit" value="Submit Poem"/>
                     </form></div>
                     <div class="instruct"><p class="poem2">%s</p></div>
+                    
+                    <script>
+                    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+                    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+                    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+                    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+                    
+                    ga('create', 'UA-44077322-1', 'webfactional.com');
+                    ga('send', 'pageview');
+                    
+                    </script>
+                    
                     ''' %poem + table + self.footer()
 
-    def matrix_to_html(self,my_data, url):
+    def matrix_to_html(self,my_data, url, my_length):
         '''takes a matrix as an argurment
         turns it into a numpy array
         ----------------------------------
@@ -95,14 +110,15 @@ class Root():
         
         M = np.array(my_data)
         
-        
+        diff =  10 - my_length
         
         string = '''<table>
         <th id="tbl_head" colspan='4'>%s</th>
-        <tr><td class="colhead">Track</td>
-        <td class="colhead">Artist</td>
-        <td id="colhead_time">Time</td>
-        <td class="colhead">Album</td>
+        <tr>
+            <td style="width:25em" id="colhead">Track</td>
+            <td style="width:20em" id="colhead">Artist</td>
+            <td style="width:3em" id="colhead_time">Time</td>
+            <td style="width:20em" id="colhead">Album</td>
         </tr>
         ''' %table_name
         count_col = 0
@@ -119,7 +135,7 @@ class Root():
                 count_col += 1
                 
                 if count_col % 3 == 0:
-                    string = string + '<td style="width:4em"><a class="time" href="%s" target="_tab">%s</a></td>' %(url[count_row - 1], e)
+                    string = string + '<td><a class="time" href="%s" target="_tab">%s</a></td>' %(url[count_row - 1], e)
                 elif count_col % 2 == 0:
                     string = string + '<td><a href="%s" target="_tab">%s</a></td>' %(url[count_row - 1], e)
                 elif len(e[0]) <= 20:
@@ -129,6 +145,25 @@ class Root():
                     
                 
             string = string + '</tr>'
+        
+        if my_length % 2 == 0: 
+            if diff > 0:
+                for i in range(diff+1):
+                    if i % 2 == 0:
+                        string = string + '''<tr class="pdark"><td> </td><td></td><td></td><td></td></tr>'''
+                    else:
+                        string = string + '''<tr class="plight"><td> </td><td></td><td></td><td></td></tr>'''
+        else:
+            if diff > 0:
+                for i in range(diff+1):
+                    if i % 2 == 0:
+                        string = string + '''<tr class="plight"><td> </td><td></td><td></td><td></td></tr>'''
+                    else:
+                        string = string + '''<tr class="pdark"><td> </td><td></td><td></td><td></td></tr>'''
+       
+        
+        
+        
         string = string + '</table>'
         return string
 
@@ -138,84 +173,57 @@ class Root():
 
 
 
-
-
-
-
-#class Operation():
-#    
-#    def double(self,a_poem, a_sale): 
-#        gross_profit = a_sale - a_poem
-#        gross_margin = gross_profit/a_sale       
-#        return gross_profit, gross_margin
-#    
-#    def make_matrix(self,a_poem, a_sale):
-#        '''takes ints as input
-#        ---------------------
-#        returns a matrix'''
-#        
-#        M = np.mat([[a_poem, a_sale], [a_poem, a_sale]])
-#        
-#        return M
-#        
-#        
-#        
-#    
-#    def matrix_to_html(self,M):
-#        '''takes a matrix as an argurment
-#        turns it into a numpy array
-#        ----------------------------------
-#        returns an html table'''
-#        
-#        table_name = 'OLS Output'
-#        
-#        M = np.array(M)
-#        
-#        string = '''<table class="altrowstable" id="alternatecolor">
-#        <th colspan='2'>%s</th>''' %table_name
-#        for row in M:
-#            string = string + '<tr>'
-#            for e in row:
-#                string = string + '<td>%i</td>' %e
-#            string = string + '</tr>'
-#        string = string + '</table>'
-#        return string
-
-
 class Query():
     
     def __init__(self,qstring):
-        
-        
         
         #delimiters are used by several methods so make a list
         #of them into instance variable
         self.delim_list = [',', '.', '?', '!', ';'] 
         
-        #remove any delimimeters and end of poem as they mess it up
+        #create instance variable qstring
         self.qstring = qstring.lower()
         
-        print(self.qstring)
+        #remove in-line quotes
+        self.qstring = self.qstring.replace("''", '"')
+        self.qstring = self.qstring.replace('"', '')
+        self.qstring = self.qstring.replace('â€', '')
+        self.qstring = self.qstring.replace('â€™', "'")
         
-        for delim in self.delim_list:
-            if self.qstring[len(self.qstring) - 1:] == delim:
-                #print(self.qstring)
-                self.qstring = self.qstring[:len(self.qstring) - 1]
-                #print(self.qstring)
+        #/ to space
+        self.qstring = self.qstring.replace('/', ' ')
         
-        #delim list giving problems so change evrything to commas
+        #... to space
+        self.qstring = self.qstring.replace('...', ' ')
+        
+        #delim list giving problems so change everything to commas
         for delim in self.delim_list:
             self.qstring = self.qstring.replace(delim, ',')
         
+        #remove any delimimeters and end of poem.
+        if self.qstring[len(self.qstring) - 1:] == ',':
+            self.qstring = self.qstring[:len(self.qstring) - 1]
+        
         #double spaces to single spaces
         self.qstring = self.qstring.replace('  ', ' ')
+        
+        #remove any spaces and end of poem.
+        if self.qstring[len(self.qstring) - 1:] == ' ':
+            self.qstring = self.qstring[:len(self.qstring) - 1]
+        
+
         
         #utf-8 apostrophes are troublesome so change them manually to ascii
         #change utf-8 to ascii
         #self.qstring = self.qstring.decode('utf-8')
         #self.qstring = self.qstring.replace('â€™', "'")
+        #print('hi')
+        #self.qstring = self.qstring.encode('ascii', 'ignore')     
         
-        self.qstring = self.qstring.encode('ascii', 'ignore')     
+        #utf-8 apostrophes are troublesome so change them manually to ascii
+        #change utf-8 to ascii
+        #self.qstring = self.qstring.encode('utf-8')
+        #self.qstring = self.qstring.encode('ascii', 'ignore') 
         
         #create an original version of the poem
         self.orig_string = self.qstring.lower()
@@ -310,7 +318,11 @@ class Query():
         self.qstring = my_string
         #print(self.qstring)
         return None
-
+    
+    def titlize(self,s):
+        b = []
+        for temp in s.split(' '): b.append(temp.capitalize())
+        return ' '.join(b)
 
     def search(self):
         '''takes the instance var qstring, calls the api
@@ -323,8 +335,9 @@ class Query():
         
         #api stuff
         url = 'http://ws.spotify.com/search/1/track.json?q=' + self.qstring
-        data = urllib2.urlopen(url)
-        js = json.load(data)
+        data = urllib.request.urlopen(url)
+        raw_data = data.read()
+        js = json.loads(raw_data.decode('utf-8'))
         
         #loop through all results on first page
         results_list = []
@@ -332,7 +345,7 @@ class Query():
         while count < len((js['tracks'])):
             
             #get information we want
-            artist_name = js['tracks'][count]['artists'][0]['name'].lower()
+            artist_name = js['tracks'][count]['artists'][0]['name']
             track_name = js['tracks'][count]['name'].lower()
             time_name = js['tracks'][count]['length']
             
@@ -345,9 +358,9 @@ class Query():
             time_remain = str(time_remain)    
             time_name = int(time_name / 60)
             time_name = str(time_name)
-            time_name = time_name + '.' + time_remain
+            time_name = time_name + ':' + time_remain
 
-            album_name = js['tracks'][count]['album']['name'].lower()
+            album_name = js['tracks'][count]['album']['name']
             
             
             href_name = js['tracks'][count]['href']
@@ -370,9 +383,11 @@ class Query():
                 self.time_list.append(time_name)
                 
                 if self.unmatched_string == '':
-                    self.track_list.append(track_name)
+                    self.track_list.append(self.titlize(track_name))
                 else:
-                    self.track_list.append('[' + self.unmatched_string + '] ' + track_name)
+                    #self.track_list.append('[' + string.capwords(self.unmatched_string) + '] ' + string.capwords(track_name))
+                    #self.track_list.append('[' + self.unmatched_string.title() + '] ' + track_name.title())
+                    self.track_list.append('[' + self.titlize(self.unmatched_string) + '] ' + self.titlize(track_name))
                     self.unmatched_string = ''
                 
                 #break out of loop once the first result is found
@@ -399,6 +414,9 @@ class Query():
         to orig_string.
         --------------------------------------------------
         returns nothing'''
+        
+        #decode??
+        #self.orig_string = self.orig_string.decode('utf-8')
         
         #loop until we've used up the entire original poem
         #space at the end because used string has space at end
@@ -499,6 +517,16 @@ class Query():
         return self.result_frame, self.href_list
 
 
+cherrypy.config.update({
+    #'environment': 'production',
+    'tools.staticdir.debug': True,
+    'log.screen': True,
+    'server.socket_host': '127.0.0.1',
+    'server.socket_port': 15850,
+    
+    #'tools.encode.on': True,
+    #'tools.encode.encoding': 'utf-8',
+})
 
 
 
@@ -507,24 +535,19 @@ cherrypy.config.update({'tools.sessions.on': True})
 
 if __name__ == "__main__":
 	
-	#print(os.path.join(current_dir,"unitconverter.js"))
-	cherrypy.quickstart(Root(),config={
-	
-		'/css':
-		{ 'tools.staticdir.on':True,
-		  'tools.staticdir.dir':os.path.join(current_dir,"css")
-		},
-		'/joey_css.css':
-		{ 'tools.staticfile.on':True,
-		  'tools.staticfile.filename':os.path.join(current_dir,"joey_css.css")
-		},
-		'/img':
-		{ 'tools.staticdir.on':True,
-		  'tools.staticdir.dir':os.path.join(current_dir,"img")
-		},
-		'/test.png':
-		{ 'tools.staticfile.on':True,
-		  'tools.staticfile.filename':os.path.join(current_dir,"test.png")
-		}
-	       
-	})
+
+    cherrypy.quickstart(Root(),config={
+    	       
+   	        '/':
+   	        { 'tools.staticdir.root': '/home/joeystox/webapps'
+   	        },
+    
+  		'/joey_css.css':
+  		{ 'tools.staticfile.on':True,
+    		  'tools.staticfile.filename':'/home/joeystox/webapps/static/joey_css.css'
+  		},
+  		'/css':
+  		{ 'tools.staticdir.on':True,
+    		  'tools.staticdir.dir':'/static'
+  		}
+   	})
