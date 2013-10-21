@@ -1,0 +1,530 @@
+# -*- coding: utf-8 -*-
+import cherrypy
+import numpy as np
+import matplotlib.pyplot as plt
+import os.path
+
+import json
+import urllib2
+from pandas import DataFrame
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+print(current_dir)
+
+class Root():
+    
+    title = '''Welcome to Spoti.py'''    
+
+    def header(self):
+        return '''<!DOCTYPE html>
+                  <html>
+                  <head>
+                        <title>%s</title>
+                        <link rel="stylesheet" href="css/joey_css.css" type="text/css" /> 
+                  </head>
+                  <body>
+                  <div class="title"><h2>%s</h2></div>''' % (self.title, self.title)
+                  
+    def footer(self):
+        return '''</body>
+                  </html>'''
+
+    @cherrypy.expose
+    def index(self, poem=None, sale=None):
+        
+        cherrypy.session['poem'] = poem
+        #cherrypy.session['sale'] = sale
+        
+        if poem == None:
+            return self.header() + '''
+                    
+                    <form action="index" method="GET">
+                        <div class="instruct"><p>Please enter some text. 
+                        Do not copy and paste! Punctuation helps!</p></div>
+                        <textarea name="poem" rows=5 cols=80 class="form"></textarea><br/>
+                        <div class="btn"><input type="submit" value="Submit Poem"/></div>
+                    </form>
+                    
+                    <br/>
+                    ''' + self.footer()
+        else:
+            
+            poem = poem
+            #sale = float(sale)
+            
+            a_query = Query(poem)
+            a_query.search_loop()
+            playlist, playlist_urls = a_query.dic_to_frame()
+            
+            #[gross_profit, gross_margin] = (an_operation.double(poem, sale))
+            #M = (an_operation.make_matrix(poem, sale))
+            my_data = playlist
+            
+            url = playlist_urls
+            track = playlist['track']
+            artist = playlist['artist']
+            album = playlist['album']
+            
+            
+            table = self.matrix_to_html(my_data, url)
+            #table = self.matrix_to_html(playlist_urls)
+            
+            
+            #fig = plt.figure()
+            #plt.plot(sp.arange(10))
+            #fig.savefig('/Users/joedangerstox/Desktop/Python/img/test.png')
+            
+            return self.header() + '''
+                    <div><form action="index" method="GET">
+                        <div class="instruct"><p>Please enter some text. 
+                        Do not copy and paste! Punctuation helps!</p></div>
+                        <textarea name="poem" rows=5 cols=80></textarea><br/>
+                        <input type="submit" value="Submit Poem"/>
+                    </form></div>
+                    <div class="instruct"><p class="poem2">%s</p></div>
+                    ''' %poem + table + self.footer()
+
+    def matrix_to_html(self,my_data, url):
+        '''takes a matrix as an argurment
+        turns it into a numpy array
+        ----------------------------------
+        returns an html table'''
+        
+        table_name = 'Spoti.py playlist created by Joseph Stockermans 2013'
+        
+        
+        M = np.array(my_data)
+        
+        
+        
+        string = '''<table>
+        <th id="tbl_head" colspan='4'>%s</th>
+        <tr><td class="colhead">Track</td>
+        <td class="colhead">Artist</td>
+        <td id="colhead_time">Time</td>
+        <td class="colhead">Album</td>
+        </tr>
+        ''' %table_name
+        count_col = 0
+        count_row = 0
+        for row in M:
+            count_row += 1
+            if count_row % 2:
+                string = string + '<tr class="dark">'
+                count_col = 0
+            else:
+                string = string + '<tr class="light">'
+                count_col = 0
+            for e in row:
+                count_col += 1
+                
+                if count_col % 3 == 0:
+                    string = string + '<td style="width:4em"><a class="time" href="%s" target="_tab">%s</a></td>' %(url[count_row - 1], e)
+                elif count_col % 2 == 0:
+                    string = string + '<td><a href="%s" target="_tab">%s</a></td>' %(url[count_row - 1], e)
+                elif len(e[0]) <= 20:
+                    string = string + '<td style="width:20em"><a href="%s" target="_tab">%s</a></td>' %(url[count_row - 1], e)
+                else:
+                    string = string + '<td><a href="%s" target="_tab">%s</a></td>' %(url[count_row - 1], e)
+                    
+                
+            string = string + '</tr>'
+        string = string + '</table>'
+        return string
+
+
+
+
+
+
+
+
+
+
+
+#class Operation():
+#    
+#    def double(self,a_poem, a_sale): 
+#        gross_profit = a_sale - a_poem
+#        gross_margin = gross_profit/a_sale       
+#        return gross_profit, gross_margin
+#    
+#    def make_matrix(self,a_poem, a_sale):
+#        '''takes ints as input
+#        ---------------------
+#        returns a matrix'''
+#        
+#        M = np.mat([[a_poem, a_sale], [a_poem, a_sale]])
+#        
+#        return M
+#        
+#        
+#        
+#    
+#    def matrix_to_html(self,M):
+#        '''takes a matrix as an argurment
+#        turns it into a numpy array
+#        ----------------------------------
+#        returns an html table'''
+#        
+#        table_name = 'OLS Output'
+#        
+#        M = np.array(M)
+#        
+#        string = '''<table class="altrowstable" id="alternatecolor">
+#        <th colspan='2'>%s</th>''' %table_name
+#        for row in M:
+#            string = string + '<tr>'
+#            for e in row:
+#                string = string + '<td>%i</td>' %e
+#            string = string + '</tr>'
+#        string = string + '</table>'
+#        return string
+
+
+class Query():
+    
+    def __init__(self,qstring):
+        
+        
+        
+        #delimiters are used by several methods so make a list
+        #of them into instance variable
+        self.delim_list = [',', '.', '?', '!', ';'] 
+        
+        #remove any delimimeters and end of poem as they mess it up
+        self.qstring = qstring.lower()
+        
+        print(self.qstring)
+        
+        for delim in self.delim_list:
+            if self.qstring[len(self.qstring) - 1:] == delim:
+                #print(self.qstring)
+                self.qstring = self.qstring[:len(self.qstring) - 1]
+                #print(self.qstring)
+        
+        #delim list giving problems so change evrything to commas
+        for delim in self.delim_list:
+            self.qstring = self.qstring.replace(delim, ',')
+        
+        #double spaces to single spaces
+        self.qstring = self.qstring.replace('  ', ' ')
+        
+        #utf-8 apostrophes are troublesome so change them manually to ascii
+        #change utf-8 to ascii
+        #self.qstring = self.qstring.decode('utf-8')
+        #self.qstring = self.qstring.replace('â€™', "'")
+        
+        self.qstring = self.qstring.encode('ascii', 'ignore')     
+        
+        #create an original version of the poem
+        self.orig_string = self.qstring.lower()
+        
+        #define further instance variables to be used
+        self.used_string = ''
+        self.artist_list = [] 
+        self.track_list = []
+        self.time_list = []
+        self.album_list = []
+        self.href_list = []
+        self.result_dic = {}
+        self.result_frame = DataFrame()
+        self.unmatched_string = ''
+    
+    def space_to_plus(self):
+        '''takes the instance var qstring
+        replaces ' ' with '+' 
+        -----------------------
+        returns nothing'''
+        
+        self.qstring = self.qstring.replace(' ', '+')         
+    
+    def plus_to_space(self):
+        '''takes the instance var qstring
+        replaces '+' with ' ' 
+        -----------------------
+        returns nothing'''
+        
+        self.qstring = self.qstring.replace('+', ' ')   
+
+
+    def string_to_bites(self):
+        '''takes the instance var qstring and
+        updates it to only a chun (bite) of it,
+        the size of which is determined by the 'bite size'.
+        --------------------------------------------
+        returns the the delimiter used in the current
+        bite (if any) else, it returns None'''
+        
+        #define 'bite' size
+        bite = 6
+        
+        #make sure paces are pluses
+        self.space_to_plus()
+        
+        #split string up into list and only add
+        #first 5 elements to string my_string.
+        
+        #we do this by breaking up our instance variable into a list
+        #and putting it back together using only the first 5 elements
+        #into the local variable my_string
+        string_list = self.qstring.split('+', bite)
+        string_length = len(string_list)
+        my_string = ''
+        
+        #if the string list length is greater than the bite size,
+        #chew it up. Else, if its smaller, just add it all to the current bite
+        count = 0
+        if string_length >= bite:
+            while count < bite:
+                my_string = my_string + string_list[count] + '+'
+                count += 1
+        else:
+            while count < string_length:
+                my_string = my_string + string_list[count] + '+'
+                count += 1
+        
+        #take off the last '+' and save results back into the local variable
+        #qstring
+        my_string = my_string.rsplit('+', 1)[0]
+        self.qstring = my_string
+        #print(self.qstring)
+        
+        #use delimiters to give us further information about
+        #how to chop up bites as they signal the end of a linguistic idea.
+        #return the delimiter if there is one
+        #for delim in self.delim_list:
+        #    if delim in my_string:
+        #        my_string = my_string.split(delim, 1)[0]
+        #        self.qstring = my_string
+        #        #print(self.qstring)
+        #        return delim + ' '
+        
+        #delim list changed to just comma
+        if ',' in my_string:
+            my_string = my_string.split(',', 1)[0]
+            self.qstring = my_string
+            return ',' + ' '
+        
+        #if no delimiters, return None
+        self.qstring = my_string
+        #print(self.qstring)
+        return None
+
+
+    def search(self):
+        '''takes the instance var qstring, calls the api
+        and searches spotify for tracks that match qstring
+        ------------------------------------------------
+        returns a list containing the first result found'''
+        
+        #make sure spaces are pluses
+        self.space_to_plus()
+        
+        #api stuff
+        url = 'http://ws.spotify.com/search/1/track.json?q=' + self.qstring
+        data = urllib2.urlopen(url)
+        js = json.load(data)
+        
+        #loop through all results on first page
+        results_list = []
+        count = 0
+        while count < len((js['tracks'])):
+            
+            #get information we want
+            artist_name = js['tracks'][count]['artists'][0]['name'].lower()
+            track_name = js['tracks'][count]['name'].lower()
+            time_name = js['tracks'][count]['length']
+            
+            #put time into mins and secs
+            time_name = float(time_name)
+            time_remain = int(time_name % 60)
+            if time_remain < 10:
+                time_remain = str('0') + str(time_remain)
+                
+            time_remain = str(time_remain)    
+            time_name = int(time_name / 60)
+            time_name = str(time_name)
+            time_name = time_name + '.' + time_remain
+
+            album_name = js['tracks'][count]['album']['name'].lower()
+            
+            
+            href_name = js['tracks'][count]['href']
+            href_name = href_name.replace('spotify:track:', 'http://open.spotify.com/track/')
+            
+            #change poem back to spaces to compare against track name
+            self.plus_to_space() 
+            
+            #take the first result that matches exactly
+            if self.qstring == track_name:
+                
+                #results list is needed to show whether the query found something
+                current_result = [artist_name, track_name, album_name, href_name]
+                results_list.append(current_result)
+                
+                #individual lists are needed to record data for the DataFrame
+                self.artist_list.append(artist_name)
+                self.album_list.append(album_name)
+                self.href_list.append(href_name)
+                self.time_list.append(time_name)
+                
+                if self.unmatched_string == '':
+                    self.track_list.append(track_name)
+                else:
+                    self.track_list.append('[' + self.unmatched_string + '] ' + track_name)
+                    self.unmatched_string = ''
+                
+                #break out of loop once the first result is found
+                break
+            
+            count += 1
+            
+            #change spaces back to pluses
+            self.space_to_plus() 
+        
+        #return results_list to indicate whether a result was found
+        return results_list
+            
+    def search_loop(self):
+        '''First calls the string_to_bite method to put qstring
+        into a manageable size. Then iteratively calls the search method and deletes
+        the final word from qstring if the search method
+        returns an empty list. Once a result is found, it updates
+        a used_string instance variable to keep track of how much
+        of the poem we have turned into track names, and updates
+        qstring to what is left to orig_string instance variable
+        net of used_string. The loop starts again with the next bite
+        and this continues until use_string is equal
+        to orig_string.
+        --------------------------------------------------
+        returns nothing'''
+        
+        #loop until we've used up the entire original poem
+        #space at the end because used string has space at end
+        while self.used_string != self.orig_string + ' ':
+        
+            punctuation = self.string_to_bites()
+        
+            #keep calling search method while deleting the
+            #last word of the poem
+            while self.search() == []:
+                
+                #print('current bite: %s ' %self.qstring)
+                
+                #control for single words (no plus sign case)
+                if '+' in self.qstring:
+                    self.qstring = self.qstring.rsplit('+', 1)[0]
+                else:
+                    #self.artist_list.append(None)
+                    #self.track_list.append(self.qstring)
+                    #self.album_list.append(None)
+                    #self.href_list.append(None)
+                    
+                    #build up unmatched strings in case several are in a row
+                    self.unmatched_string = self.unmatched_string + ' ' + self.qstring
+                    if self.unmatched_string[:1] == ' ':
+                        self.unmatched_string = self.unmatched_string[1:]
+                    
+
+                    
+            
+                    break
+                
+            #update strings to prepare for next loop iteration
+            if punctuation == None:
+                self.qstring = self.qstring + ' '
+                self.used_string = self.used_string + self.qstring
+            else:
+                if self.qstring + punctuation in self.orig_string:
+                    self.used_string = self.used_string + self.qstring + punctuation
+                else:
+                    #this case is for if punctuation existed in the original bite
+                    #in which case the punctuation local variable will not be None
+                    #but punctuation did not come directly after the current qstring
+                    self.qstring = self.qstring + ' '
+                    self.used_string = self.used_string + self.qstring
+            
+            print('poem progress: %s' %self.qstring)
+            
+            #update qstring to orig_string net of used_string
+            #we want to replace only the FIRST instance; since repeated
+            #phrases will ALL be deleted. This method screws up at the last
+            #word so we need a different method at the last word of the poem
+            #print(self.qstring)
+            #print(self.orig_string)
+            
+            if self.used_string == self.orig_string + ' ':
+                self.qstring = self.orig_string.replace(self.used_string, '')
+            else:
+                #try:
+                self.qstring = self.orig_string.split(self.used_string, 1)[1]
+                #there occasionally occurs a strange index error...
+                #except IndexError:
+                #    self.qstring = self.orig_string.replace(self.used_string, '')
+            
+            #print(self.qstring)
+            
+            #if unmatched string is the last word in the poem
+            #we need to add it at the end as the search function
+            #where tracks are appended to track_list won't be called
+            #anymore
+            if self.used_string == self.orig_string + ' ' and self.unmatched_string != '':
+                self.track_list[-1] = self.track_list[-1] + ' [' + self.unmatched_string + ']'
+            
+            #print('poem progress: %s' %self.used_string)
+            #print('orig: %s' %self.orig_string)
+            #print('q %s' %self.qstring)
+            
+    def dic_to_frame(self):
+        '''creates a dictionary from artist_list,
+        track_list, and album_list instance variables
+        and then creates a DataFrame out of that dictionary.
+        Prints this dataframe and the associated URLs
+        -----------------------------------------------
+        returns nothing'''
+        
+        #create dictionary to be used for the DataFrame
+        self.result_dic = {'track': self.track_list, 'artist': self.artist_list, 'time': self.time_list, 'album': self.album_list}    
+        
+        #create DataFrame
+        self.result_frame = DataFrame(self.result_dic, columns=['track', 'artist', 'time', 'album'])
+        #print(self.result_frame)
+        
+        #print('')
+        #count = 0
+        #while count < len(self.href_list):
+        #    print(self.href_list[count])
+        #    count += 1
+        return self.result_frame, self.href_list
+
+
+
+
+
+#config
+cherrypy.config.update({'tools.sessions.on': True})
+
+if __name__ == "__main__":
+	
+	#print(os.path.join(current_dir,"unitconverter.js"))
+	cherrypy.quickstart(Root(),config={
+	
+		'/css':
+		{ 'tools.staticdir.on':True,
+		  'tools.staticdir.dir':os.path.join(current_dir,"css")
+		},
+		'/joey_css.css':
+		{ 'tools.staticfile.on':True,
+		  'tools.staticfile.filename':os.path.join(current_dir,"joey_css.css")
+		},
+		'/img':
+		{ 'tools.staticdir.on':True,
+		  'tools.staticdir.dir':os.path.join(current_dir,"img")
+		},
+		'/test.png':
+		{ 'tools.staticfile.on':True,
+		  'tools.staticfile.filename':os.path.join(current_dir,"test.png")
+		}
+	       
+	})
